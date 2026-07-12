@@ -1,1 +1,5 @@
 test_txt/
+venv/
+__pycache__/
+.env
+.pytest_cache/
