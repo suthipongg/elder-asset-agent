@@ -1,0 +1,86 @@
+[
+  {
+    "account_id": "ACC-1003",
+    "total_value": 10067500.00,
+    "currency": "THB",
+    "last_updated": "2024-01-12T16:00:00Z",
+    "holdings": [
+      {
+        "symbol": "K-EQRMF",
+        "name": "กองทุนเปิดเค หุ้นทุนเพื่อการเลี้ยงชีพ",
+        "quantity": 15000.00,
+        "current_price": 85.50,
+        "market_value": 1282500.00,
+        "cost_basis": 1200000.00,
+        "gain_loss": 82500.00,
+        "gain_loss_percent": 6.88
+      },
+      {
+        "symbol": "K-FIXEDRMF",
+        "name": "กองทุนเปิดเค ตราสารหนี้เพื่อการเลี้ยงชีพ",
+        "quantity": 80000.00,
+        "current_price": 14.25,
+        "market_value": 1140000.00,
+        "cost_basis": 1120000.00,
+        "gain_loss": 20000.00,
+        "gain_loss_percent": 1.79
+      },
+      {
+        "symbol": "SCBRMLEQ",
+        "name": "กองทุนเปิดไทยพาณิชย์หุ้นทุน เพื่อการเลี้ยงชีพ",
+        "quantity": 25000.00,
+        "current_price": 45.80,
+        "market_value": 1145000.00,
+        "cost_basis": 1000000.00,
+        "gain_loss": 145000.00,
+        "gain_loss_percent": 14.50
+      },
+      {
+        "symbol": "KFSDIV",
+        "name": "กองทุนเปิดกรุงศรีหุ้นปันผล",
+        "quantity": 50000.00,
+        "current_price": 22.50,
+        "market_value": 1125000.00,
+        "cost_basis": 1050000.00,
+        "gain_loss": 75000.00,
+        "gain_loss_percent": 7.14
+      },
+      {
+        "symbol": "TMBGINCOME",
+        "name": "กองทุนเปิดทหารไทย Global Income",
+        "quantity": 100000.00,
+        "current_price": 11.25,
+        "market_value": 1125000.00,
+        "cost_basis": 1100000.00,
+        "gain_loss": 25000.00,
+        "gain_loss_percent": 2.27
+      },
+      {
+        "symbol": "K-GB",
+        "name": "กองทุนเปิดเค พันธบัตร",
+        "quantity": 120000.00,
+        "current_price": 12.50,
+        "market_value": 1500000.00,
+        "cost_basis": 1480000.00,
+        "gain_loss": 20000.00,
+        "gain_loss_percent": 1.35
+      },
+      {
+        "symbol": "CASH",
+        "name": "เงินสดในบัญชี",
+        "quantity": 2750000.00,
+        "current_price": 1.00,
+        "market_value": 2750000.00,
+        "cost_basis": 2750000.00,
+        "gain_loss": 0.00,
+        "gain_loss_percent": 0.00
+      }
+    ],
+    "asset_allocation": {
+      "thai_equity": 35.28,
+      "global_equity": 11.17,
+      "fixed_income": 26.22,
+      "cash": 27.32
+    }
+  }
+]
