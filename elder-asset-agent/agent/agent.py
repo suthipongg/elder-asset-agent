@@ -60,23 +60,16 @@ class ElderAssetAgent:
         self.tool_executor.reset()
 
         try:
-            intent_result = classify_tool(user_message, self.llm)
-            print('++++++++++++++++++++++++++++++')
-            print(json.dumps(intent_result, indent=4, ensure_ascii=False))
-            print('++++++++++++++++++++++++++++++')
-                
-            tool_params = intent_result.get("tool_params", {})
+            tool_result = classify_tool(user_message, self.llm)
+            tool_params = tool_result.get("tool_params", {})
             
             compliance_eval = self.compliance_safety.evaluate_action(
                 compliance_context=tool_params.get("compliance.check", {}),
             )
 
-            print(json.dumps(compliance_eval, indent=4, ensure_ascii=False))
-            print('+++++++++++++++++++++++++')
-            
             if not compliance_eval["action"]:
                 return self._build_response(
-                    status="refused",
+                    status=compliance_eval['status'],
                     message=compliance_eval['message'],
                     evidence=compliance_eval['evidence'],
                     violations=compliance_eval['violations'],
@@ -85,7 +78,7 @@ class ElderAssetAgent:
             
             return self._build_response(
                 status="success",
-                message=str(intent_result),
+                message=str(tool_result),
             )
 
         except Exception as e:
