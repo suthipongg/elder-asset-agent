@@ -2,7 +2,14 @@
 Elder Asset Agent - Main agent implementation.
 """
 
-from typing import Any, Literal
+import logging
+from typing import Any
+
+from llm.client import LLMClient
+from agent.tool_executor import ToolExecutor
+from agent.classify_tool import classify_tool
+import json
+logger = logging.getLogger(__name__)
 
 
 class ElderAssetAgent:
@@ -17,9 +24,8 @@ class ElderAssetAgent:
     """
 
     def __init__(self):
-        """Initialize the agent."""
-        # TODO: Set up your agent architecture
-        pass
+        self.llm = LLMClient()
+        self.tool_executor = ToolExecutor()
 
     def solve(self, user_message: str) -> dict[str, Any]:
         """
@@ -46,7 +52,48 @@ class ElderAssetAgent:
             - "needs_clarification": Ambiguous request, asking user for more info
             - "handoff": Escalated to human support (via support.create_case)
             - "refused": Request denied due to policy violation
-
-        TODO: Implement your agent logic
         """
-        raise NotImplementedError("Agent logic not implemented")
+        self.tool_executor.reset()
+
+        try:
+            intent_result = classify_tool(user_message, self.llm)
+            print('++++++++++++++++++++++++++++++')
+            print(json.dumps(intent_result, indent=4, ensure_ascii=False))
+            print('++++++++++++++++++++++++++++++')
+                
+            tool_params = intent_result.get("tool_params", {})
+            
+            return self._build_response(
+                status="success",
+                message=str(intent_result),
+            )
+
+        except Exception as e:
+            print("Error in solve:", e)
+            return self._build_response(
+                status="needs_clarification",
+                message=(
+                    "ขออภัยค่ะ เกิดข้อผิดพลาดในการประมวลผล "
+                    "กรุณาลองใหม่อีกครั้ง หรือติดต่อเจ้าหน้าที่ที่ 02-xxx-xxxx ค่ะ"
+                ),
+                violations=[f"internal_error:{type(e).__name__}"],
+            )
+            
+    def _build_response(
+        self,
+        status: str,
+        message: str,
+        evidence: dict | None = None,
+        violations: list | None = None,
+        confirmations: list | None = None,
+    ) -> dict[str, Any]:
+        return {
+            "status": status,
+            "message": message,
+            "tool_trace": self.tool_executor.get_trace(),
+            "evidence": evidence or {},
+            "safety": {
+                "confirmations_requested": confirmations or [],
+                "violations": violations or [],
+            },
+        }
