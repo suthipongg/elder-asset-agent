@@ -8,7 +8,10 @@ from typing import Any
 from llm.client import LLMClient
 from agent.tool_executor import ToolExecutor
 from agent.classify_tool import classify_tool
+from agent.compliance_safety import ComplianceSafety
+
 import json
+
 logger = logging.getLogger(__name__)
 
 
@@ -26,6 +29,7 @@ class ElderAssetAgent:
     def __init__(self):
         self.llm = LLMClient()
         self.tool_executor = ToolExecutor()
+        self.compliance_safety = ComplianceSafety(self.tool_executor)
 
     def solve(self, user_message: str) -> dict[str, Any]:
         """
@@ -62,6 +66,22 @@ class ElderAssetAgent:
             print('++++++++++++++++++++++++++++++')
                 
             tool_params = intent_result.get("tool_params", {})
+            
+            compliance_eval = self.compliance_safety.evaluate_action(
+                compliance_context=tool_params.get("compliance.check", {}),
+            )
+
+            print(json.dumps(compliance_eval, indent=4, ensure_ascii=False))
+            print('+++++++++++++++++++++++++')
+            
+            if not compliance_eval["action"]:
+                return self._build_response(
+                    status="refused",
+                    message=compliance_eval['message'],
+                    evidence=compliance_eval['evidence'],
+                    violations=compliance_eval['violations'],
+                    confirmations=compliance_eval['confirmations_requested'],
+                )
             
             return self._build_response(
                 status="success",
