@@ -9,9 +9,8 @@ from llm.client import LLMClient
 from agent.tool_executor import ToolExecutor
 from agent.classify_tool import classify_tool
 from agent.compliance_safety import ComplianceSafety
-
+from agent.safe_request import handle_safe_request
 import json
-
 logger = logging.getLogger(__name__)
 
 
@@ -61,6 +60,7 @@ class ElderAssetAgent:
 
         try:
             tool_result = classify_tool(user_message, self.llm)
+            print(json.dumps(tool_result, indent=2, ensure_ascii=False))
             tool_params = tool_result.get("tool_params", {})
             
             compliance_eval = self.compliance_safety.evaluate_action(
@@ -71,14 +71,23 @@ class ElderAssetAgent:
                 return self._build_response(
                     status=compliance_eval['status'],
                     message=compliance_eval['message'],
-                    evidence=compliance_eval['evidence'],
-                    violations=compliance_eval['violations'],
-                    confirmations=compliance_eval['confirmations_requested'],
+                    evidence=compliance_eval.get('evidence', {}),
+                    violations=compliance_eval.get('violations', []),
+                    confirmations=compliance_eval.get('confirmations_requested', []),
                 )
             
+            result = handle_safe_request(
+                user_message=user_message,
+                requires_tools=tool_result.get("requires_tools", []),
+                tool_params=tool_params,
+                tool_executor=self.tool_executor,
+                llm=self.llm,
+            )
+
             return self._build_response(
-                status="success",
-                message=str(tool_result),
+                status=result["status"],
+                message=result["message"],
+                evidence=result.get("evidence", {}),
             )
 
         except Exception as e:
