@@ -41,8 +41,8 @@ def print_response(response: dict):
     print("-" * 40)
 
     # Main message
-    if "message" in response:
-        print(response["message"])
+    if "final message" in response:
+        print(response["final message"])
 
     # Safety info
     safety = response.get("safety", {})

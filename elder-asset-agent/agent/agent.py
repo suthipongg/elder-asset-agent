@@ -119,7 +119,7 @@ class ElderAssetAgent:
     ) -> dict[str, Any]:
         return {
             "status": status,
-            "message": message,
+            "final message": message,
             "tool_trace": self.tool_executor.get_trace(),
             "evidence": evidence or {},
             "safety": {
