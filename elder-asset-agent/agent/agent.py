@@ -10,6 +10,7 @@ from agent.tool_executor import ToolExecutor
 from agent.classify_tool import classify_tool
 from agent.compliance_safety import ComplianceSafety
 from agent.safe_request import handle_safe_request
+from agent.memory import ConversationMemory
 import json
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,7 @@ class ElderAssetAgent:
         self.llm = LLMClient()
         self.tool_executor = ToolExecutor()
         self.compliance_safety = ComplianceSafety(self.tool_executor)
+        self.memory = ConversationMemory(max_turns=5)
 
     def solve(self, user_message: str) -> dict[str, Any]:
         """
@@ -57,9 +59,10 @@ class ElderAssetAgent:
             - "refused": Request denied due to policy violation
         """
         self.tool_executor.reset()
+        chat_history = self.memory.get_history()
 
         try:
-            tool_result = classify_tool(user_message, self.llm)
+            tool_result = classify_tool(user_message, chat_history, self.llm)
             print(json.dumps(tool_result, indent=2, ensure_ascii=False))
             tool_params = tool_result.get("tool_params", {})
             
@@ -68,13 +71,15 @@ class ElderAssetAgent:
             )
 
             if not compliance_eval["action"]:
-                return self._build_response(
+                response = self._build_response(
                     status=compliance_eval['status'],
                     message=compliance_eval['message'],
                     evidence=compliance_eval.get('evidence', {}),
                     violations=compliance_eval.get('violations', []),
                     confirmations=compliance_eval.get('confirmations_requested', []),
                 )
+                self.memory.add_turn(user_message, response["message"])
+                return response
             
             result = handle_safe_request(
                 user_message=user_message,
@@ -82,13 +87,16 @@ class ElderAssetAgent:
                 tool_params=tool_params,
                 tool_executor=self.tool_executor,
                 llm=self.llm,
+                chat_history=chat_history,
             )
 
-            return self._build_response(
+            response = self._build_response(
                 status=result["status"],
                 message=result["message"],
                 evidence=result.get("evidence", {}),
             )
+            self.memory.add_turn(user_message, response["message"])
+            return response
 
         except Exception as e:
             print("Error in solve:", e)

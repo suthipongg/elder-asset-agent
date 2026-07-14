@@ -20,6 +20,7 @@ def handle_safe_request(
     tool_params: dict[str, Any],
     tool_executor: ToolExecutor,
     llm: LLMClient,
+    chat_history: list[dict],
 ) -> dict[str, Any]:
     try:
         tool_outputs = execute_safe_tools(requires_tools, tool_params, tool_executor)
@@ -35,7 +36,7 @@ def handle_safe_request(
         accounts=tool_outputs.get("accounts"),
         portfolio=tool_outputs.get("portfolio"),
     )
-    response_message = _generate_response(user_message, requires_tools, tool_outputs, llm)
+    response_message = _generate_response(user_message, tool_outputs, llm, chat_history)
     return {
         "status": "success",
         "message": response_message,
@@ -306,9 +307,9 @@ def _create_user_support_case(
 
 def _generate_response(
     user_message: str,
-    requires_tools: list[str],
     tool_outputs: dict[str, Any],
     llm: LLMClient,
+    chat_history: list[dict],
 ) -> str:
     tool_data_text = format_tool_data_for_prompt(tool_outputs)
     print(tool_data_text)
@@ -317,10 +318,9 @@ def _generate_response(
         tool_data=tool_data_text,
     )
 
-    messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": prompt},
-    ]
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    messages.extend(chat_history)
+    messages.append({"role": "user", "content": prompt})
 
     try:
         return llm.generate(messages, temperature=0.3)

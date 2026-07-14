@@ -33,12 +33,15 @@ MAX_RETRIES = 3
 BASE_DELAY_SEC = 0.5  # Exponential backoff base
 
 
+MAX_CACHE_SIZE = 5
+
 class ToolExecutor:
     def __init__(self, budget: int = DEFAULT_BUDGET):
         self.budget = budget
         self._calls_made = 0
         self._trace: list[dict[str, Any]] = []
-        self._cache: dict[tuple, Any] = {}
+        # _cache maps cache_key -> {"data": result, "freq": int, "last_accessed": float}
+        self._cache: dict[tuple, dict[str, Any]] = {}
 
     def _make_hashable(self, obj: Any) -> Any:
         if isinstance(obj, dict):
@@ -50,7 +53,10 @@ class ToolExecutor:
     def call(self, tool_name: str, **kwargs) -> Any:
         cache_key = (tool_name, self._make_hashable(kwargs))
         if cache_key in self._cache:
-            return self._cache[cache_key]
+            entry = self._cache[cache_key]
+            entry["freq"] += 1
+            entry["last_accessed"] = time.time()
+            return entry["data"]
 
         if self._calls_made >= self.budget:
             raise Exception(
@@ -77,7 +83,7 @@ class ToolExecutor:
                     "attempt": attempt + 1,
                 })
 
-                self._cache[cache_key] = result
+                self._add_to_cache(cache_key, result)
                 return result
 
             except TimeoutError as e:
@@ -116,4 +122,16 @@ class ToolExecutor:
     def reset(self):
         self._calls_made = 0
         self._trace = []
-        self._cache = {}
+
+    def _add_to_cache(self, cache_key: tuple, result: Any) -> None:
+        if len(self._cache) >= MAX_CACHE_SIZE and cache_key not in self._cache:
+            lfu_key = min(
+                self._cache.keys(),
+                key=lambda k: (self._cache[k]["freq"], self._cache[k]["last_accessed"])
+            )
+            del self._cache[lfu_key]
+        self._cache[cache_key] = {
+            "data": result,
+            "freq": 1,
+            "last_accessed": time.time()
+        }
