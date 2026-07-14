@@ -68,10 +68,13 @@ def _strip_internal_fields(tool_outputs: dict[str, Any]) -> dict[str, Any]:
         acc.pop("bank", None)          # might be redundant
 
     # --- portfolio ---
-    portfolio = tool_outputs.get("portfolio")
-    if isinstance(portfolio, dict):
-        portfolio.pop("is_stale", None)     # handled via stale_warning key
-        portfolio.pop("last_updated", None) # handled via stale_warning key
+    portfolios = tool_outputs.get("portfolio")
+    if isinstance(portfolios, dict):
+        portfolios = [portfolios]
+    for p in (portfolios or []):
+        if isinstance(p, dict):
+            p.pop("is_stale", None)     # handled via stale_warning key
+            p.pop("last_updated", None) # handled via stale_warning key
 
     # --- user profile ---
     user = tool_outputs.get("user")
@@ -105,7 +108,7 @@ def _gather_data(
         return _gather_transaction_info(tool_params, executor)
     
     elif tool_name == "portfolio.get_positions":
-        return _gather_portfolio_info(executor)
+        return _gather_portfolio_info(tool_params, executor)
     
     elif tool_name == "kyc.get_risk_profile":
         return _gather_guidance_info(executor)
@@ -150,33 +153,54 @@ def _gather_transaction_info(
         outputs["accounts"] = None
         return outputs
 
-    txn_params = tool_params.get("transactions.search", {})
-    account_id = txn_params.get("account_id")
-    filters = txn_params.get("filters", None)
+    raw_param = tool_params.get("transactions.search", {})
 
-    if not account_id:
-        outputs["transactions"] = (
-            "ERROR: ไม่พบพารามิเตอร์ account_id "
-            "โปรดถามผู้ใช้ว่าต้องการดูประวัติธุรกรรมของบัญชีไหน "
-            "(เช่น ออมทรัพย์ หรือ กระแสรายวัน)"
-        )
-        return outputs
+    param_sets: list[dict] = raw_param if isinstance(raw_param, list) else [raw_param]
 
-    try:
-        raw_txns = executor.call(
-            "transactions.search",
-            account_id=account_id,
-            filters=filters,
-        )
-        unique_txns = deduplicate_transactions(raw_txns)
-        outputs["transactions"] = unique_txns
-    except TimeoutError:
-        outputs["transactions"] = None
+    all_raw: list[dict] = []
+    has_error = False
+    timeout_errors = []
+
+    for params in param_sets:
+        account_id = params.get("account_id")
+        filters = params.get("filters", None)
+
+        if not account_id:
+            outputs["transactions"] = (
+                "ERROR: ไม่พบพารามิเตอร์ account_id "
+                "โปรดถามผู้ใช้ว่าต้องการดูประวัติธุรกรรมของบัญชีไหน "
+                "(เช่น ออมทรัพย์ หรือ กระแสรายวัน)"
+            )
+            has_error = True
+            break
+
+        try:
+            batch = executor.call(
+                "transactions.search",
+                account_id=account_id,
+                filters=filters,
+            )
+            all_raw.extend(batch)
+        except TimeoutError:
+            timeout_errors.append(f"account={account_id}, filters={filters}")
+
+    if not has_error:
+        if not all_raw and len(timeout_errors) == len(param_sets):
+            outputs["transactions"] = None
+        else:
+            outputs["transactions"] = deduplicate_transactions(all_raw) if all_raw else []
+            
+        if timeout_errors:
+            outputs["transactions_warning"] = "พบปัญหา Timeout ไม่สามารถดึงข้อมูลบางส่วนได้: " + " | ".join(timeout_errors)
 
     return outputs
 
 
-def _gather_portfolio_info(executor: ToolExecutor) -> dict[str, Any]:
+
+def _gather_portfolio_info(
+    tool_params: dict[str, Any],
+    executor: ToolExecutor,
+) -> dict[str, Any]:
     outputs: dict[str, Any] = {}
 
     try:
@@ -186,23 +210,36 @@ def _gather_portfolio_info(executor: ToolExecutor) -> dict[str, Any]:
         outputs["accounts"] = None
         return outputs
 
-    investment_accounts = [
-        a for a in accounts if a.get("account_type") == "investment"
-    ]
+    raw_param = tool_params.get("portfolio.get_positions", {})
+    param_sets: list[dict] = raw_param if isinstance(raw_param, list) else [raw_param]
 
-    if investment_accounts:
-        acc_id = investment_accounts[0]["account_id"]
+    if all(not p.get("account_id") for p in param_sets):
+        investment_accounts = [a for a in (accounts or []) if a.get("account_type") == "investment"]
+        param_sets = [{"account_id": a["account_id"]} for a in investment_accounts]
+
+    all_portfolios = []
+    timeout_errors = []
+    
+    for params in param_sets:
+        acc_id = params.get("account_id")
+        if not acc_id:
+            continue
+            
         try:
             portfolio = executor.call("portfolio.get_positions", account_id=acc_id)
-            outputs["portfolio"] = portfolio
-
-            if portfolio.get("is_stale"):
-                outputs["stale_warning"] = (
-                    f"ข้อมูลพอร์ตอัพเดทล่าสุดเมื่อ {portfolio.get('last_updated')} "
-                    "ราคาอาจไม่ตรงกับปัจจุบัน"
-                )
+            if portfolio:
+                if portfolio.get("is_stale"):
+                    outputs["stale_warning"] = (
+                        f"ข้อมูลพอร์ตอัพเดทล่าสุดเมื่อ {portfolio.get('last_updated')} "
+                        "ราคาอาจไม่ตรงกับปัจจุบัน"
+                    )
+                all_portfolios.append(portfolio)
         except TimeoutError:
-            outputs["portfolio"] = None
+            timeout_errors.append(f"account={acc_id}")
+
+    outputs["portfolio"] = all_portfolios if len(all_portfolios) > 1 else (all_portfolios[0] if all_portfolios else None)
+    if timeout_errors:
+        outputs["portfolio_warning"] = "พบปัญหา Timeout ไม่สามารถดึงข้อมูลพอร์ตบางบัญชีได้: " + " | ".join(timeout_errors)
 
     try:
         outputs["risk_profile"] = executor.call("kyc.get_risk_profile")
