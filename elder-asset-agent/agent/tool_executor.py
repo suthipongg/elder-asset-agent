@@ -38,8 +38,20 @@ class ToolExecutor:
         self.budget = budget
         self._calls_made = 0
         self._trace: list[dict[str, Any]] = []
+        self._cache: dict[tuple, Any] = {}
+
+    def _make_hashable(self, obj: Any) -> Any:
+        if isinstance(obj, dict):
+            return tuple(sorted((k, self._make_hashable(v)) for k, v in obj.items()))
+        elif isinstance(obj, list):
+            return tuple(self._make_hashable(v) for v in obj)
+        return obj
 
     def call(self, tool_name: str, **kwargs) -> Any:
+        cache_key = (tool_name, self._make_hashable(kwargs))
+        if cache_key in self._cache:
+            return self._cache[cache_key]
+
         if self._calls_made >= self.budget:
             raise Exception(
                 f"Tool call budget exhausted ({self.budget} calls used). "
@@ -65,6 +77,7 @@ class ToolExecutor:
                     "attempt": attempt + 1,
                 })
 
+                self._cache[cache_key] = result
                 return result
 
             except TimeoutError as e:
@@ -103,3 +116,4 @@ class ToolExecutor:
     def reset(self):
         self._calls_made = 0
         self._trace = []
+        self._cache = {}

@@ -311,7 +311,7 @@ def _generate_response(
     llm: LLMClient,
 ) -> str:
     tool_data_text = format_tool_data_for_prompt(tool_outputs)
-
+    print(tool_data_text)
     prompt = RESPONSE_GENERATION_PROMPT.format(
         user_message=user_message,
         tool_data=tool_data_text,

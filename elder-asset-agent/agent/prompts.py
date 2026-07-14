@@ -60,16 +60,14 @@ def format_tool_data_for_prompt(tool_outputs: dict) -> str:
 
         if isinstance(output, list):
             parts.append(f"### {tool_name}\nจำนวน: {len(output)} รายการ")
-            for i, item in enumerate(output[:10]):
+            for i, item in enumerate(output):
                 parts.append(f"  {i+1}. {_format_item(item)}")
-            if len(output) > 10:
-                parts.append(f"  ... และอีก {len(output) - 10} รายการ")
         elif isinstance(output, dict):
             parts.append(f"### {tool_name}")
             for key, value in output.items():
                 if isinstance(value, list):
                     parts.append(f"  {key}: {len(value)} รายการ")
-                    for item in value[:5]:
+                    for item in value:
                         parts.append(f"    - {_format_item(item)}")
                 else:
                     parts.append(f"  {key}: {value}")
