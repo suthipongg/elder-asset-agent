@@ -2,39 +2,15 @@ import logging
 from typing import Any
 
 from agent.tool_executor import ToolExecutor, BudgetExhaustedError
-from agent.utils import deduplicate_transactions, extract_evidence, format_thb
+from agent.utils import deduplicate_transactions, format_thb
 from agent.prompts import (
     SYSTEM_PROMPT,
     RESPONSE_GENERATION_PROMPT,
-    GRACEFUL_DEGRADATION_TEMPLATE,
     format_tool_data_for_prompt,
 )
 from llm.client import LLMClient
-import json
+
 logger = logging.getLogger(__name__)
-
-
-def handle_safe_request(
-    user_message: str,
-    requires_tools: list[str],
-    tool_params: dict[str, Any],
-    tool_executor: ToolExecutor,
-    llm: LLMClient,
-    chat_history: list[dict],
-) -> dict[str, Any]:
-    tool_outputs = execute_safe_tools(requires_tools, tool_params, tool_executor)
-    evidence = extract_evidence(
-        transactions=tool_outputs.get("transactions"),
-        accounts=tool_outputs.get("accounts"),
-        portfolio=tool_outputs.get("portfolio"),
-    )
-    response_message = _generate_response(user_message, tool_outputs, llm, chat_history)
-    return {
-        "status": "success",
-        "message": response_message,
-        "evidence": evidence,
-        "tool_outputs": tool_outputs,
-    }
 
 
 def execute_safe_tools(
@@ -50,7 +26,6 @@ def execute_safe_tools(
             
         try:
             new_outputs = _gather_data(tool_name, tool_params, tool_executor)
-            print(json.dumps(new_outputs, indent=2, ensure_ascii=False))
             tool_outputs.update(new_outputs)
         except TimeoutError as e:
             system_errors.append(f"ไม่สามารถเข้าถึงข้อมูลจากระบบ {tool_name} ได้ในขณะนี้ (Timeout)")
@@ -130,7 +105,6 @@ def _gather_data(
         return _create_user_support_case(support_params, executor)
     
     else:
-        print("Unknown safe tool: {tool_name}, falling back to balance")
         return _gather_balance_info(executor)
 
 
@@ -313,14 +287,13 @@ def _create_user_support_case(
     return outputs
 
 
-def _generate_response(
+def generate_response(
     user_message: str,
     tool_outputs: dict[str, Any],
     llm: LLMClient,
     chat_history: list[dict],
 ) -> str:
     tool_data_text = format_tool_data_for_prompt(tool_outputs)
-    print(tool_data_text)
     prompt = RESPONSE_GENERATION_PROMPT.format(
         user_message=user_message,
         tool_data=tool_data_text,

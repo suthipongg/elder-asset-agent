@@ -9,9 +9,10 @@ from llm.client import LLMClient
 from agent.tool_executor import ToolExecutor
 from agent.classify_tool import classify_tool
 from agent.compliance_safety import ComplianceSafety
-from agent.safe_request import handle_safe_request
+from agent.safe_request import execute_safe_tools, generate_response
+from agent.utils import extract_evidence
 from agent.memory import ConversationMemory
-import json
+
 logger = logging.getLogger(__name__)
 
 
@@ -63,40 +64,71 @@ class ElderAssetAgent:
         tool_history = self.memory.get_tool_history()
 
         try:
-            tool_result = classify_tool(user_message, chat_history, tool_history, self.llm)
-            print(json.dumps(tool_result, indent=2, ensure_ascii=False))
-            tool_params = tool_result.get("tool_params", {})
+            loop_count = 0
+            max_loops = 3
+            current_tool_outputs = {}
+            executed_signatures = set()
+            final_status = "success"
+            compliance_violations = []
             
-            compliance_eval = self.compliance_safety.evaluate_action(
-                compliance_context=tool_params.get("compliance.check", {}),
-            )
-
-            if not compliance_eval["action"]:
-                response = self._build_response(
-                    status=compliance_eval['status'],
-                    message=compliance_eval['message'],
-                    evidence=compliance_eval.get('evidence', {}),
-                    violations=compliance_eval.get('violations', []),
-                    confirmations=compliance_eval.get('confirmations_requested', []),
+            while loop_count < max_loops:
+                loop_count += 1
+                context_for_classification = self._build_classification_context(tool_history, current_tool_outputs)
+                tool_result = classify_tool(user_message, chat_history, context_for_classification, loop_count, self.llm)
+                requires_tools = tool_result.get("requires_tools", [])
+                tool_params = tool_result.get("tool_params", {})
+                
+                compliance_eval = self.compliance_safety.evaluate_action(
+                    compliance_context=tool_params.get("compliance.check", {}),
                 )
-                self.memory.add_turn(user_message, response["final message"])
-                return response
-            
-            result = handle_safe_request(
-                user_message=user_message,
-                requires_tools=tool_result.get("requires_tools", []),
-                tool_params=tool_params,
-                tool_executor=self.tool_executor,
-                llm=self.llm,
-                chat_history=chat_history,
-            )
+                if not compliance_eval["action"]:
+                    final_status = compliance_eval['status']
+                    compliance_violations = compliance_eval.get('violations', [])
+                    response = self._build_response(
+                        status=compliance_eval['status'],
+                        message=compliance_eval['message'],
+                        evidence=compliance_eval.get('evidence', {}),
+                        violations=compliance_eval.get('violations', []),
+                        confirmations=compliance_eval.get('confirmations_requested', []),
+                    )
+                    self.memory.add_turn(user_message, response["final message"])
+                    return response
+                
+                new_tools, filtered_tool_params = self._filter_executed_tools(requires_tools, tool_params, executed_signatures)
+                if not new_tools:
+                    break # No new tools or parameters needed, exit loop
+                
+                new_outputs = execute_safe_tools(
+                    requires_tools=new_tools,
+                    tool_params=filtered_tool_params,
+                    tool_executor=self.tool_executor
+                )
+                current_tool_outputs.update(new_outputs)
+                
+                if "system_errors" in new_outputs:
+                    final_status = "needs_clarification"
+                    break
+                if not tool_result.get("has_next_step", True):
+                    break
 
-            response = self._build_response(
-                status=result["status"],
-                message=result["message"],
-                evidence=result.get("evidence", {}),
+            evidence = extract_evidence(
+                transactions=current_tool_outputs.get("transactions"),
+                accounts=current_tool_outputs.get("accounts"),
+                portfolio=current_tool_outputs.get("portfolio"),
             )
-            self.memory.add_turn(user_message, response["final message"], tool_outputs=result.get("tool_outputs"))
+            response_message = generate_response(
+                user_message=user_message,
+                tool_outputs=current_tool_outputs,
+                llm=self.llm,
+                chat_history=chat_history
+            )
+            response = self._build_response(
+                status=final_status,
+                message=response_message,
+                evidence=evidence,
+                violations=compliance_violations,
+            )
+            self.memory.add_turn(user_message, response["final message"], tool_outputs=current_tool_outputs)
             return response
 
         except Exception as e:
@@ -110,6 +142,40 @@ class ElderAssetAgent:
                 violations=[f"internal_error:{type(e).__name__}"],
             )
             
+    def _build_classification_context(self, tool_history: dict, current_tool_outputs: dict) -> dict:
+        context = tool_history.copy()
+        for key, val in current_tool_outputs.items():
+            if isinstance(val, list):
+                existing = context.get(key, [])
+                if isinstance(existing, list):
+                    context[key] = existing + val
+                else:
+                    context[key] = val
+            else:
+                context[key] = val
+        return context
+
+    def _filter_executed_tools(self, requires_tools: list, tool_params: dict, executed_signatures: set) -> tuple[list, dict]:
+        new_tools = []
+        filtered_tool_params = {}
+        
+        for t in requires_tools:
+            params = tool_params.get(t)
+            param_list = params if isinstance(params, list) else [params] if params else [{}]
+            new_param_list = []
+            
+            for p in param_list:
+                sig = f"{t}:{json.dumps(p, sort_keys=True)}"
+                if sig not in executed_signatures:
+                    executed_signatures.add(sig)
+                    new_param_list.append(p)
+                    
+            if new_param_list:
+                new_tools.append(t)
+                filtered_tool_params[t] = new_param_list if len(new_param_list) > 1 or isinstance(params, list) else new_param_list[0]
+                
+        return new_tools, filtered_tool_params
+
     def _build_response(
         self,
         status: str,

@@ -73,8 +73,6 @@ class ComplianceSafety:
             )
             return result
         except TimeoutError:
-            # If compliance service is down, default to DENY (fail-safe)
-            print("Compliance service unavailable — defaulting to deny")
             return {
                 "allowed": False,
                 "required_confirmations": [],
