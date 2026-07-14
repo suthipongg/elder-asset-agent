@@ -15,6 +15,11 @@ from tools import (
 logger = logging.getLogger(__name__)
 
 
+class BudgetExhaustedError(Exception):
+    pass
+
+
+
 TOOL_REGISTRY: dict[str, Callable] = {
     "profile.get_user": get_user,
     "accounts.list_accounts": list_accounts,
@@ -59,7 +64,7 @@ class ToolExecutor:
             return entry["data"]
 
         if self._calls_made >= self.budget:
-            raise Exception(
+            raise BudgetExhaustedError(
                 f"Tool call budget exhausted ({self.budget} calls used). "
                 "Cannot make more tool calls for this request."
             )

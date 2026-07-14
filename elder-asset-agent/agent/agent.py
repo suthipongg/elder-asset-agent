@@ -60,9 +60,10 @@ class ElderAssetAgent:
         """
         self.tool_executor.reset()
         chat_history = self.memory.get_history()
+        tool_history = self.memory.get_tool_history()
 
         try:
-            tool_result = classify_tool(user_message, chat_history, self.llm)
+            tool_result = classify_tool(user_message, chat_history, tool_history, self.llm)
             print(json.dumps(tool_result, indent=2, ensure_ascii=False))
             tool_params = tool_result.get("tool_params", {})
             
@@ -78,7 +79,7 @@ class ElderAssetAgent:
                     violations=compliance_eval.get('violations', []),
                     confirmations=compliance_eval.get('confirmations_requested', []),
                 )
-                self.memory.add_turn(user_message, response["message"])
+                self.memory.add_turn(user_message, response["final message"])
                 return response
             
             result = handle_safe_request(
@@ -95,7 +96,7 @@ class ElderAssetAgent:
                 message=result["message"],
                 evidence=result.get("evidence", {}),
             )
-            self.memory.add_turn(user_message, response["message"])
+            self.memory.add_turn(user_message, response["final message"], tool_outputs=result.get("tool_outputs"))
             return response
 
         except Exception as e:

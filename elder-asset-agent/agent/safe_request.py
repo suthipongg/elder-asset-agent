@@ -1,7 +1,7 @@
 import logging
 from typing import Any
 
-from agent.tool_executor import ToolExecutor
+from agent.tool_executor import ToolExecutor, BudgetExhaustedError
 from agent.utils import deduplicate_transactions, extract_evidence, format_thb
 from agent.prompts import (
     SYSTEM_PROMPT,
@@ -22,15 +22,7 @@ def handle_safe_request(
     llm: LLMClient,
     chat_history: list[dict],
 ) -> dict[str, Any]:
-    try:
-        tool_outputs = execute_safe_tools(requires_tools, tool_params, tool_executor)
-    except TimeoutError as e:
-        service_name = str(e).split("Tool ")[1].split(" ")[0] if "Tool " in str(e) else "ข้อมูล"
-        return {
-            "status": "needs_clarification",
-            "message": GRACEFUL_DEGRADATION_TEMPLATE.format(service=service_name),
-            "evidence": {},
-        }
+    tool_outputs = execute_safe_tools(requires_tools, tool_params, tool_executor)
     evidence = extract_evidence(
         transactions=tool_outputs.get("transactions"),
         accounts=tool_outputs.get("accounts"),
@@ -41,6 +33,7 @@ def handle_safe_request(
         "status": "success",
         "message": response_message,
         "evidence": evidence,
+        "tool_outputs": tool_outputs,
     }
 
 
@@ -50,15 +43,30 @@ def execute_safe_tools(
     tool_executor: ToolExecutor,
 ) -> dict[str, Any]:
     tool_outputs: dict[str, Any] = {}
-    for tool_name in requires_tools:
+    system_errors = []
+    for i, tool_name in enumerate(requires_tools):
         if tool_name == "compliance.check":
             continue
             
-        new_outputs = _gather_data(tool_name, tool_params, tool_executor)
-        print(json.dumps(new_outputs, indent=2, ensure_ascii=False))
-        tool_outputs.update(new_outputs)
+        try:
+            new_outputs = _gather_data(tool_name, tool_params, tool_executor)
+            print(json.dumps(new_outputs, indent=2, ensure_ascii=False))
+            tool_outputs.update(new_outputs)
+        except TimeoutError as e:
+            system_errors.append(f"ไม่สามารถเข้าถึงข้อมูลจากระบบ {tool_name} ได้ในขณะนี้ (Timeout)")
+        except BudgetExhaustedError as e:
+            uncalled_tools = requires_tools[i:]
+            system_errors.append(f"ไม่สามารถดึงข้อมูลเพิ่มเติมได้ ข้อมูลที่ยังไม่ได้ดึงคือ: {', '.join(uncalled_tools)} เนื่องจากโควต้าการดึงข้อมูลเต็ม กรุณาแจ้งลูกค้าว่าสามารถดึงข้อมูลส่วนนี้ได้หากลูกค้าต้องการในคำถามถัดไป")
+            break
+        except Exception as e:
+            uncalled_tools = requires_tools[i:]
+            system_errors.append(f"เกิดข้อผิดพลาดของระบบระหว่างดึงข้อมูลจาก {tool_name} ({type(e).__name__}) ข้อมูลที่ยังไม่ได้ดึงคือ: {', '.join(uncalled_tools)} กรุณาแจ้งปัญหาให้ลูกค้าทราบอย่างสุภาพ")
+            break
     
-    return _strip_internal_fields(tool_outputs)
+    stripped_outputs = _strip_internal_fields(tool_outputs)
+    if system_errors:
+        stripped_outputs["system_errors"] = system_errors
+    return stripped_outputs
 
 
 def _strip_internal_fields(tool_outputs: dict[str, Any]) -> dict[str, Any]:
