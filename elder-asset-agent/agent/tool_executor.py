@@ -61,6 +61,14 @@ class ToolExecutor:
             entry = self._cache[cache_key]
             entry["freq"] += 1
             entry["last_accessed"] = time.time()
+            self._trace.append({
+                "tool": tool_name,
+                "inputs": kwargs,
+                "output_summary": entry["data"],
+                "status": "success",
+                "attempt": 1,
+                "is_cached": True,
+            })
             return entry["data"]
 
         if self._calls_made >= self.budget:
@@ -86,6 +94,7 @@ class ToolExecutor:
                     "output_summary": result,
                     "status": "success",
                     "attempt": attempt + 1,
+                    "is_cached": False,
                 })
 
                 self._add_to_cache(cache_key, result)

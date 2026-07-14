@@ -197,10 +197,22 @@ class ElderAssetAgent:
         violations: list | None = None,
         confirmations: list | None = None,
     ) -> dict[str, Any]:
+        trace = self.tool_executor.get_trace()
+        regular_tools = [t for t in trace if not t.get("is_cached", False)]
+        cached_tools = [t for t in trace if t.get("is_cached", False)]
+        
+        if cached_tools:
+            print()
+            print(f"Cached tools used: {len(cached_tools)}")
+            for t in cached_tools[:5]:
+                print(f"  - {t.get('tool', 'unknown')}")
+            if len(cached_tools) > 5:
+                print(f"  ... and {len(cached_tools) - 5} more")
+        
         return {
             "status": status,
             "final message": message,
-            "tool_trace": self.tool_executor.get_trace(),
+            "tool_trace": regular_tools,
             "evidence": evidence or {},
             "safety": {
                 "confirmations_requested": confirmations or [],
