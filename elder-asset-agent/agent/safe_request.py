@@ -1,5 +1,6 @@
 import logging
 from typing import Any
+import json
 
 from agent.tool_executor import ToolExecutor, BudgetExhaustedError
 from agent.utils import deduplicate_transactions, format_thb
@@ -289,15 +290,24 @@ def _create_user_support_case(
 
 def generate_response(
     user_message: str,
-    tool_outputs: dict[str, Any],
+    tool_outputs: dict,
+    pending_cases: list[dict],
     llm: LLMClient,
     chat_history: list[dict],
 ) -> str:
     tool_data_text = format_tool_data_for_prompt(tool_outputs)
+    
+    pending_context = ""
+    if pending_cases:
+        cases_str = json.dumps(pending_cases, ensure_ascii=False)
+        pending_context = f"\n[ข้อมูลระบบ: รายการเคสที่ค้างอยู่ปัจจุบันของลูกค้า: {cases_str}]"
+        
     prompt = RESPONSE_GENERATION_PROMPT.format(
         user_message=user_message,
         tool_data=tool_data_text,
     )
+    if pending_context:
+        prompt = pending_context + "\n\n" + prompt
 
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     messages.extend(chat_history)

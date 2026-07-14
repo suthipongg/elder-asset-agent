@@ -3,12 +3,22 @@ class ConversationMemory:
         self.max_turns = max_turns
         self._history: list[dict[str, str]] = []
         self._tool_history: list[dict] = []
+        self._pending_cases: list[dict] = []
 
     def add_turn(self, user_msg: str, assistant_msg: str, tool_outputs: dict | None = None) -> None:
         self._history.append({"role": "user", "content": user_msg})
         self._history.append({"role": "assistant", "content": assistant_msg})
         self._tool_history.append(tool_outputs or {})
+        
+        if tool_outputs and "support_case" in tool_outputs:
+            case = tool_outputs["support_case"]
+            if case and not any(c.get("case_id") == case.get("case_id") for c in self._pending_cases):
+                self._pending_cases.append(case)
+                
         self._enforce_window()
+
+    def get_pending_cases(self) -> list[dict]:
+        return list(self._pending_cases)
 
     def get_tool_history(self) -> dict:
         merged = {}
@@ -66,3 +76,4 @@ class ConversationMemory:
     def clear(self) -> None:
         self._history.clear()
         self._tool_history.clear()
+        self._pending_cases.clear()

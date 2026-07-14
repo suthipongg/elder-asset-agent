@@ -119,7 +119,7 @@ class ComplianceSafety:
             # กรณีที่ 2: มี verbal_confirmation หรือ cooling_off_period → ต้องส่งเจ้าหน้าที่ (Handoff)
             # เช่น โอนเงิน > 10,000 (verbal), > 50,000 (cooling), change_beneficiary (elderly)
             if agent_confirms:
-                case_info, evidence_data = self._create_support_case(action, actual_context, compliance_result)
+                case_info, evidence_data, case_result = self._create_support_case(action, actual_context, compliance_result)
                 
                 confirm_parts = []
                 if user_confirms:
@@ -132,6 +132,7 @@ class ComplianceSafety:
                     "action": False,
                     "status": "handoff",
                     "evidence": {"case_evidence": evidence_data},
+                    "support_case": case_result,
                     "message": (
                         f"⚠️ รายการ '{action_th}' ของคุณลูกค้า จำเป็นต้องดำเนินการผ่านเจ้าหน้าที่เพื่อความปลอดภัยค่ะ\n\n"
                         f"ขั้นตอนที่ต้องดำเนินการ:\n{confirm_text}\n"
@@ -146,11 +147,12 @@ class ComplianceSafety:
                 # 3a: ถ้าเป็น financial action (โอนเงิน, ซื้อขาย ฯลฯ) → ต้อง handoff เสมอ ตาม System Limitations
                 # เช่น elderly โอนเงินยอดน้อย → compliance ให้แค่ sms_otp → แต่บอททำเองไม่ได้อยู่ดี
                 if action in MUST_HANDOFF_ACTIONS:
-                    case_info, evidence_data = self._create_support_case(action, actual_context, compliance_result)
+                    case_info, evidence_data, case_result = self._create_support_case(action, actual_context, compliance_result)
                     return {
                         "action": False,
                         "status": "handoff",
                         "evidence": {"case_evidence": evidence_data},
+                        "support_case": case_result,
                         "message": (
                             f"⚠️ รายการ '{action_th}' ของคุณลูกค้า จำเป็นต้องดำเนินการผ่านเจ้าหน้าที่เพื่อความปลอดภัยค่ะ\n\n"
                             f"ขั้นตอนที่ต้องดำเนินการ:\n"
@@ -176,14 +178,14 @@ class ComplianceSafety:
             
             # กรณีที่ 4: ไม่มี confirmations เลย แต่เป็น FORBIDDEN_ACTION → Handoff ตรง
             # เช่น โอนเงินยอดน้อย (ไม่ใช่ elderly, ไม่ต้อง confirm อะไร) → แต่บอททำเองไม่ได้อยู่ดี
-            case_info, evidence_data = self._create_support_case(action, actual_context, compliance_result)
+            case_info, evidence_data, case_result = self._create_support_case(action, actual_context, compliance_result)
             return {
                 "action": False,
                 "status": "handoff",
                 "evidence": {"case_evidence": evidence_data},
+                "support_case": case_result,
                 "message": (
-                    f"⚠️ รายการ '{action_th}' ของคุณลูกค้า จำเป็นต้องดำเนินการผ่านเจ้าหน้าที่ค่ะ\n"
-                    f"ระบบได้ส่งเรื่องให้เจ้าหน้าที่ดูแลเรียบร้อยแล้ว\n"
+                    f"⚠️ ขออภัยค่ะ รายการ '{action_th}' ต้องให้เจ้าหน้าที่เป็นผู้ดำเนินการให้เท่านั้นค่ะ\n"
                     f"{case_info}"
                 ),
                 "violations": [],
@@ -200,7 +202,7 @@ class ComplianceSafety:
         action: str,
         context: dict[str, Any],
         compliance_result: dict[str, Any],
-    ) -> tuple[str, list[dict]]:
+    ) -> tuple[str, list[dict], dict | None]:
         request_details = {k: v for k, v in context.items() if k != "action"}
         
         # แยก confirmations ตามหน้าที่
@@ -257,5 +259,6 @@ class ComplianceSafety:
         except Exception as e:
             logger.error(f"Failed to create support case: {e}")
             case_info = ""
+            case_result = None
             
-        return case_info, evidence
+        return case_info, evidence, case_result

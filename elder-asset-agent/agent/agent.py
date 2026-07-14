@@ -75,7 +75,14 @@ class ElderAssetAgent:
             while loop_count < max_loops:
                 loop_count += 1
                 context_for_classification = self._build_classification_context(tool_history, current_tool_outputs)
-                tool_result = classify_tool(user_message, chat_history, context_for_classification, loop_count, self.llm)
+                tool_result = classify_tool(
+                    user_message, 
+                    chat_history, 
+                    context_for_classification, 
+                    self.memory.get_pending_cases(),
+                    loop_count, 
+                    self.llm
+                )
                 requires_tools = tool_result.get("requires_tools", [])
                 tool_params = tool_result.get("tool_params", {})
                 
@@ -92,7 +99,11 @@ class ElderAssetAgent:
                         violations=compliance_eval.get('violations', []),
                         confirmations=compliance_eval.get('confirmations_requested', []),
                     )
-                    self.memory.add_turn(user_message, response["final message"])
+                    
+                    if "support_case" in compliance_eval and compliance_eval["support_case"]:
+                        current_tool_outputs["support_case"] = compliance_eval["support_case"]
+                        
+                    self.memory.add_turn(user_message, response["final message"], tool_outputs=current_tool_outputs)
                     return response
                 
                 new_tools, filtered_tool_params = self._filter_executed_tools(requires_tools, tool_params, executed_signatures)
@@ -120,6 +131,7 @@ class ElderAssetAgent:
             response_message = generate_response(
                 user_message=user_message,
                 tool_outputs=current_tool_outputs,
+                pending_cases=self.memory.get_pending_cases(),
                 llm=self.llm,
                 chat_history=chat_history
             )
