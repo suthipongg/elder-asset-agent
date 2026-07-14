@@ -4,6 +4,7 @@ Elder Asset Agent - Main agent implementation.
 
 import logging
 from typing import Any
+import json
 
 from llm.client import LLMClient
 from agent.tool_executor import ToolExecutor
